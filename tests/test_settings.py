@@ -114,3 +114,34 @@ def test_save_and_load_settings_roundtrip(qtbot, conductor, monkeypatch):
     plugin2.load_settings()
     assert plugin2._sensitivity_slider.value() == 25
     assert not plugin2._effect_checks["theme"].isChecked()
+
+
+def test_destroyed_widget_then_beat_does_not_crash(qtbot, conductor):
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    widget.deleteLater()
+    qtbot.waitUntil(lambda: plugin._beat_led is None, timeout=1000)
+    conductor.beat.emit()  # must not raise against deleted widgets
+
+
+def test_reopen_does_not_accumulate_connections(qtbot, conductor):
+    plugin = VibeSettingsPlugin()
+    w1 = plugin.create_widget()
+    qtbot.addWidget(w1)
+    w1.deleteLater()
+    qtbot.waitUntil(lambda: plugin._beat_led is None, timeout=1000)
+    w2 = plugin.create_widget()
+    qtbot.addWidget(w2)
+    conductor.beat.emit()  # one live connection, against w2's LED
+    assert plugin._led_timer.isActive()
+
+
+def test_self_stop_unchecks_enable(qtbot, conductor):
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    plugin._enable_check.setChecked(True)
+    assert conductor.is_running
+    conductor.stop()  # e.g. capture failure path
+    assert not plugin._enable_check.isChecked()

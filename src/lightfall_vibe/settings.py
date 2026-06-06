@@ -121,6 +121,9 @@ class VibeSettingsPlugin(SettingsPlugin):
         self._led_timer.setInterval(_LED_FLASH_MS)
         self._led_timer.timeout.connect(lambda: self._set_led(False))
         conductor.beat.connect(self._on_beat)
+        conductor.started.connect(self._on_conductor_started)
+        conductor.stopped.connect(self._on_conductor_stopped)
+        widget.destroyed.connect(self._on_widget_destroyed)
 
         self._refresh_devices()
         return widget
@@ -142,11 +145,47 @@ class VibeSettingsPlugin(SettingsPlugin):
         if conductor.is_running:  # restart capture on the new device
             conductor.stop()
             conductor.start()
-            if self._enable_check is not None:
-                self._enable_check.setChecked(conductor.is_running)
 
     def _on_sensitivity_changed(self, value: int) -> None:
         get_conductor().set_sensitivity(value / 10.0)
+
+    def _on_conductor_started(self) -> None:
+        self._sync_enable_check(True)
+
+    def _on_conductor_stopped(self) -> None:
+        self._sync_enable_check(False)
+
+    def _sync_enable_check(self, running: bool) -> None:
+        """Reflect conductor state without re-triggering start/stop."""
+        if self._enable_check is None:
+            return
+        self._enable_check.blockSignals(True)
+        self._enable_check.setChecked(running)
+        self._enable_check.blockSignals(False)
+
+    def _on_widget_destroyed(self) -> None:
+        """The Preferences dialog destroys its widgets on close.
+
+        The plugin (a non-QObject singleton) outlives them, so conductor
+        connections must be dropped by hand and all widget refs nulled --
+        otherwise the next beat pokes a deleted QLabel.
+        """
+        conductor = get_conductor()
+        for signal, slot in (
+            (conductor.beat, self._on_beat),
+            (conductor.started, self._on_conductor_started),
+            (conductor.stopped, self._on_conductor_stopped),
+        ):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass  # already disconnected
+        self._enable_check = None
+        self._device_combo = None
+        self._sensitivity_slider = None
+        self._effect_checks = {}
+        self._beat_led = None
+        self._led_timer = None
 
     def _on_beat(self) -> None:
         self._set_led(True)
@@ -177,6 +216,9 @@ class VibeSettingsPlugin(SettingsPlugin):
             if index >= 0:
                 self._device_combo.setCurrentIndex(index)
         self._device_combo.blockSignals(False)
+        # Build-time call pins conductor.device_id to the first enumerated
+        # device (loopback sorts first, so usually the right one anyway);
+        # load_settings() re-selects any persisted choice right after.
         self._on_device_changed(self._device_combo.currentIndex())
 
     # --- SettingsPlugin persistence ------------------------------------
