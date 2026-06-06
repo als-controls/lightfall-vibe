@@ -12,7 +12,6 @@ from dataclasses import dataclass
 import numpy as np
 
 N_BANDS = 24
-_BASS_BANDS = 4  # bottom N bands used for beat detection
 _REFRACTORY_S = 0.15  # min time between beats
 _FLUX_WINDOW_S = 1.0  # rolling window for the adaptive beat threshold
 _PEAK_DECAY = 0.999  # per-block decay of the auto-gain peak tracker
@@ -26,7 +25,7 @@ class VibeFrame:
 
     Attributes:
         bands: (N_BANDS,) smoothed, auto-gained band magnitudes in [0, 1].
-        rms: Root-mean-square level of the raw block.
+        rms: Root-mean-square level of the (padded/truncated) block.
         centroid: Spectral centroid, log-normalized to [0, 1] over the
             analyzer's frequency range (0 = bass-heavy, 1 = bright).
         flux: Positive bass-band spectral flux for this block.
@@ -69,6 +68,8 @@ class SpectrumAnalyzer:
         self._freqs = np.fft.rfftfreq(block_size, 1.0 / samplerate)
         edges = np.geomspace(self.f_lo, self.f_hi, n_bands + 1)
         self._band_idx = np.searchsorted(self._freqs, edges)
+
+        self._bass_bands = max(1, n_bands // 6)  # ~4 of 24: the "kick" region
 
         self._smoothed = np.zeros(n_bands)
         self._peak = 1e-9
@@ -116,7 +117,7 @@ class SpectrumAnalyzer:
         else:
             centroid = 0.0
 
-        bass = float(norm[:_BASS_BANDS].sum())
+        bass = float(norm[:self._bass_bands].sum())
         flux = max(0.0, bass - self._prev_bass)
         self._prev_bass = bass
 

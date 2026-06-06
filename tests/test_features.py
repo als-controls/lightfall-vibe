@@ -77,6 +77,7 @@ def test_refractory_prevents_double_triggers():
     analyzer = SpectrumAnalyzer(samplerate=SR, block_size=BLOCK)
     frames = _run_signal(analyzer, _click_track(120, 4.0))
     beat_indices = [i for i, f in enumerate(frames) if f.beat]
+    assert len(beat_indices) >= 2
     # No two beats within 150 ms (~7 blocks at 1024/48k).
     gaps = np.diff(beat_indices)
     assert np.all(gaps >= 6)
