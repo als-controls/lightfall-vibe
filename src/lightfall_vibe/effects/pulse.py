@@ -17,7 +17,7 @@ _PULSE_MS = 140
 
 
 class DockPulseEffect:
-    """Animates contentsMargins 0 -> _PULSE_PX -> 0 on beats."""
+    """Animates contentsMargins base -> base+_PULSE_PX -> base on each beat."""
 
     name = "pulse"
 
@@ -69,6 +69,7 @@ class DockPulseEffect:
             )
 
         anim.valueChanged.connect(apply)
+        anim.finished.connect(anim.deleteLater)
         self._anim = anim
         anim.start()
 
