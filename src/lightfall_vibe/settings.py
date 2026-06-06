@@ -141,7 +141,10 @@ class VibeSettingsPlugin(SettingsPlugin):
         if self._device_combo is None or index < 0:
             return
         conductor = get_conductor()
-        conductor.device_id = self._device_combo.itemData(index)
+        new_id = self._device_combo.itemData(index)
+        if new_id == conductor.device_id:
+            return  # no actual change: don't restart capture
+        conductor.device_id = new_id
         if conductor.is_running:  # restart capture on the new device
             conductor.stop()
             conductor.start()

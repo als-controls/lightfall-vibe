@@ -145,3 +145,40 @@ def test_self_stop_unchecks_enable(qtbot, conductor):
     assert conductor.is_running
     conductor.stop()  # e.g. capture failure path
     assert not plugin._enable_check.isChecked()
+
+
+def test_reopening_settings_does_not_restart_running_capture(qtbot, conductor):
+    stored = {}
+
+    class FakePrefs:
+        def get(self, key, default=None):
+            return stored.get(key, default)
+
+        def set(self, key, value):
+            stored[key] = value
+
+    import lightfall_vibe.settings as settings_mod
+
+    import pytest as _pytest
+    monkeypatch = _pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        settings_mod.PreferencesManager, "get_instance", staticmethod(FakePrefs)
+    )
+
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    plugin._enable_check.setChecked(True)
+    assert conductor.is_running
+    stops = []
+    conductor.stopped.connect(lambda: stops.append(1))
+    # Simulate the dialog being closed and reopened mid-vibe.
+    widget.deleteLater()
+    qtbot.waitUntil(lambda: plugin._beat_led is None, timeout=1000)
+    widget2 = plugin.create_widget()
+    qtbot.addWidget(widget2)
+    plugin.load_settings()
+    assert conductor.is_running
+    assert stops == []  # capture never restarted
+
+    monkeypatch.undo()
