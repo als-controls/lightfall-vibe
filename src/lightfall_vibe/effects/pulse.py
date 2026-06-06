@@ -14,10 +14,13 @@ from lightfall_vibe.effects.base import find_main_window
 
 _PULSE_PX = 4
 _PULSE_MS = 140
+# Pulse on the "downbeat" only. There's no bar-phase tracking (onset
+# detection, not beat tracking), so downbeat = every Nth detected beat.
+_BEATS_PER_PULSE = 4
 
 
 class DockPulseEffect:
-    """Animates contentsMargins base -> base+_PULSE_PX -> base on each beat."""
+    """Animates contentsMargins base -> base+_PULSE_PX -> base on downbeats."""
 
     name = "pulse"
 
@@ -25,6 +28,7 @@ class DockPulseEffect:
         self._target = target
         self._anim: QVariantAnimation | None = None
         self._base: tuple[int, int, int, int] | None = None
+        self._beat_count = 0
 
     def attach(self) -> bool:
         if self._base is not None:  # already attached
@@ -44,10 +48,14 @@ class DockPulseEffect:
             margins.right(),
             margins.bottom(),
         )
+        self._beat_count = 0
         return True
 
     def on_frame(self, frame: VibeFrame) -> None:
         if not frame.beat or self._target is None or self._base is None:
+            return
+        self._beat_count += 1
+        if (self._beat_count - 1) % _BEATS_PER_PULSE != 0:  # beats 1, 5, 9...
             return
         if self._anim is None:
             self._anim = self._build_anim()

@@ -68,14 +68,30 @@ def test_emit_throttled_to_10hz(manager):
     effect.detach()
 
 
-def test_background_and_text_are_never_touched(manager):
+def test_text_fields_are_never_touched(manager):
     effect = ThemeEffect(manager=manager)
     effect.attach()
-    background = manager.colors.background
     text = manager.colors.text
+    text_secondary = manager.colors.text_secondary
     effect.on_frame(_beat())
-    assert manager.colors.background == background
     assert manager.colors.text == text
+    assert manager.colors.text_secondary == text_secondary
+    effect.detach()
+
+
+def test_background_is_tinted_but_keeps_lightness(manager):
+    """Neutral chrome fields get a low-saturation wash at the walking hue
+    (pure hue rotation is a no-op on the gray backgrounds most themes use),
+    while value/lightness is preserved so text contrast survives."""
+    from PySide6.QtGui import QColor
+
+    effect = ThemeEffect(manager=manager)
+    effect.attach()
+    before = QColor(manager.colors.background)
+    effect.on_frame(_beat())
+    after = QColor(manager.colors.background)
+    assert after.name() != before.name()  # the whole app visibly tints
+    assert after.valueF() == pytest.approx(before.valueF(), abs=0.02)
     effect.detach()
 
 

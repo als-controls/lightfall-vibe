@@ -1,8 +1,13 @@
-"""ThemeEffect: cumulative hue walk of accent colors on each beat.
+"""ThemeEffect: cumulative hue walk of theme colors on each beat.
 
 Mutation mechanism mirrors lightfall-dev-plugins' palette_test_panel:
-setattr on ThemeManager._colors fields, then emit colors_changed. Only
-accents are touched -- background/surface/text stay readable.
+setattr on ThemeManager._colors fields, then emit colors_changed.
+
+Accent fields rotate their hue; neutral chrome fields (background,
+surface, border, sea) get a low-saturation wash at the walking hue --
+a pure rotation would be a no-op on the achromatic grays most themes
+use there. Value/lightness is always preserved and text fields are
+never touched, so contrast survives.
 """
 
 from __future__ import annotations
@@ -16,8 +21,10 @@ from lightfall.ui.theme.manager import ThemeManager
 from lightfall_vibe.audio.features import VibeFrame
 
 _ACCENT_FIELDS = ("primary", "secondary", "success", "warning", "error", "info")
+_TINT_FIELDS = ("background", "surface", "border", "sea")
 _HUE_STEP_DEG = 47.0  # pseudo-golden step: cycles through hues non-repetitively
 _MIN_EMIT_INTERVAL_S = 0.1  # app-wide restyle is the perf hazard: cap at 10 Hz
+_TINT_SATURATION = 0.16  # subtle wash; high enough to read, low enough to read on
 
 
 def _rotate_hue(hex_color: str, degrees: float) -> str:
@@ -26,6 +33,18 @@ def _rotate_hue(hex_color: str, degrees: float) -> str:
     if h < 0:  # achromatic (grays) have no hue to rotate
         return hex_color
     color.setHsvF((h + degrees / 360.0) % 1.0, s, v, a)
+    return color.name()
+
+
+def _tint(hex_color: str, hue_deg: float) -> str:
+    """Wash a (usually achromatic) chrome color with the walking hue.
+
+    Saturation is injected at preserved value, so dark themes stay dark,
+    light themes stay light, and text contrast survives.
+    """
+    color = QColor(hex_color)
+    _h, _s, v, a = color.getHsvF()
+    color.setHsvF((hue_deg % 360.0) / 360.0, _TINT_SATURATION, v, a)
     return color.name()
 
 
@@ -62,6 +81,9 @@ class ThemeEffect:
         for field in _ACCENT_FIELDS:
             rotated = _rotate_hue(self._snapshot[field], self._hue)
             setattr(self._manager._colors, field, rotated)
+        for field in _TINT_FIELDS:
+            tinted = _tint(self._snapshot[field], self._hue)
+            setattr(self._manager._colors, field, tinted)
         self._manager.colors_changed.emit()
 
     def _on_theme_changed(self, _theme_name: str) -> None:

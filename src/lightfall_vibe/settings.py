@@ -34,7 +34,7 @@ PREF_EFFECT = "vibe.effect.{}"  # .format(effect_name)
 _EFFECT_LABELS = {
     "spinner": "Spin the RunEngine spinner",
     "theme": "Shift theme colors on beats",
-    "pulse": "Pulse the layout on kicks",
+    "pulse": "Pulse the layout on downbeats (every 4th beat)",
 }
 _LED_FLASH_MS = 120
 

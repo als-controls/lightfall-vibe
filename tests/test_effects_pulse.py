@@ -1,6 +1,7 @@
-"""DockPulseEffect blips a widget's contents margins on beats."""
+"""DockPulseEffect blips a widget's contents margins on downbeats."""
 
 import numpy as np
+from PySide6.QtCore import QVariantAnimation
 from PySide6.QtWidgets import QWidget
 
 from lightfall_vibe.audio.features import N_BANDS, VibeFrame
@@ -59,8 +60,37 @@ def test_second_beat_after_completed_pulse_does_not_crash(qtbot):
     qtbot.waitUntil(lambda: target.contentsMargins().left() == 0, timeout=1000)
     qtbot.wait(50)  # extra event-loop turns: any deleteLater executes here
 
-    effect.on_frame(_beat())  # crashed with RuntimeError before the fix
+    for _ in range(4):  # beats 2-5; the 5th is the next downbeat
+        effect.on_frame(_beat())  # crashed with RuntimeError before the fix
     qtbot.waitUntil(lambda: target.contentsMargins().left() > 0, timeout=500)
     effect.detach()
     margins = target.contentsMargins()
     assert margins.left() == 0
+
+
+def test_pulses_only_every_fourth_beat(qtbot):
+    """No bar-phase tracking, so 'downbeat' = every 4th detected onset."""
+    target = QWidget()
+    qtbot.addWidget(target)
+    effect = DockPulseEffect(target=target)
+    effect.attach()
+
+    def _running() -> bool:
+        return (
+            effect._anim is not None
+            and effect._anim.state() == QVariantAnimation.State.Running
+        )
+
+    pulses = 0
+    for _ in range(8):
+        was_running = _running()
+        effect.on_frame(_beat())
+        if _running() and not was_running:  # this beat STARTED a pulse
+            pulses += 1
+            # Let the pulse visibly run and fully finish, so the next
+            # started-pulse detection can't be masked by this one.
+            qtbot.waitUntil(lambda: target.contentsMargins().left() > 0, timeout=500)
+            qtbot.waitUntil(lambda: not _running(), timeout=1000)
+            qtbot.wait(20)
+    assert pulses == 2  # beats 1 and 5
+    effect.detach()
