@@ -136,3 +136,13 @@ def test_beat_signal_emitted(qtbot):
     with qtbot.waitSignal(conductor.beat, timeout=1000):
         capture.frame_ready.emit(_frame(beat=True))
     conductor.stop()
+
+
+def test_late_frame_after_stop_is_dropped(qtbot):
+    conductor, capture = _make([])
+    conductor.start()
+    received = []
+    conductor.frame_ready.connect(received.append)
+    conductor.stop()
+    capture.frame_ready.emit(_frame(beat=True))  # queued-late frame
+    assert received == []

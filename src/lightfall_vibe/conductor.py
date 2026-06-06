@@ -106,6 +106,8 @@ class VibeConductor(QObject):
         capture.frame_ready.connect(self._on_frame)
         capture.failed.connect(self._on_capture_failed)
         self._capture = capture
+        # Even if every effect fails to attach, capture stays useful:
+        # the spectrum panel consumes frame_ready directly.
         for name, enabled in self._enabled.items():
             if enabled:
                 self._attach_effect(name)
@@ -145,6 +147,8 @@ class VibeConductor(QObject):
             logger.exception("Vibe effect '{}' failed to detach", name)
 
     def _on_frame(self, frame: VibeFrame) -> None:
+        if self._capture is None:  # late queued frame after stop(); drop it
+            return
         for name in list(self._active):
             try:
                 self._active[name].on_frame(frame)
@@ -157,13 +161,13 @@ class VibeConductor(QObject):
 
     def _on_capture_failed(self, message: str) -> None:
         logger.warning("Vibe capture failed: {}", message)
-        self.stop()
         try:
             from lightfall.ui.toast import ToastManager
 
             ToastManager.get_instance().warning("Vibe mode stopped", message)
         except Exception:
             pass  # headless/test environment: log only
+        self.stop()
 
 
 _conductor: VibeConductor | None = None
