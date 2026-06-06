@@ -77,3 +77,14 @@ def test_background_and_text_are_never_touched(manager):
     assert manager.colors.background == background
     assert manager.colors.text == text
     effect.detach()
+
+
+def test_theme_switch_while_attached_resnapshots(manager, qtbot):
+    effect = ThemeEffect(manager=manager)
+    effect.attach()
+    effect.on_frame(_beat())  # walk away from the original colors
+    manager.set_theme_by_name("slate")  # replaces manager._colors
+    after_switch = dict(vars(manager.colors))
+    effect.detach()
+    # Detach must NOT undo the user's theme switch.
+    assert dict(vars(manager.colors)) == after_switch

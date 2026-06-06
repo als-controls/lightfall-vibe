@@ -48,6 +48,7 @@ class ThemeEffect:
         self._snapshot = dict(vars(manager._colors))
         self._hue = 0.0
         self._last_emit = 0.0
+        manager.theme_changed.connect(self._on_theme_changed)
         return True
 
     def on_frame(self, frame: VibeFrame) -> None:
@@ -63,9 +64,16 @@ class ThemeEffect:
             setattr(self._manager._colors, field, rotated)
         self._manager.colors_changed.emit()
 
+    def _on_theme_changed(self, _theme_name: str) -> None:
+        """User switched themes mid-vibe: walk from the new theme's colors."""
+        if self._manager is not None:
+            self._snapshot = dict(vars(self._manager._colors))
+            self._hue = 0.0
+
     def detach(self) -> None:
         if self._manager is None or self._snapshot is None:
             return
+        self._manager.theme_changed.disconnect(self._on_theme_changed)
         for field, value in self._snapshot.items():
             setattr(self._manager._colors, field, value)
         self._snapshot = None
