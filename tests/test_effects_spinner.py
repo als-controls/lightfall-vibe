@@ -62,3 +62,25 @@ def test_attach_returns_false_when_no_spinner_found(qtbot):
     effect = SpinnerEffect(spinner=None)
     # No main window with a SpinnerIndicator exists in the test app.
     assert effect.attach() is False
+
+
+def test_on_frame_after_detach_does_not_move_spinner(qtbot):
+    spinner = SpinnerIndicator()
+    qtbot.addWidget(spinner)
+    effect = SpinnerEffect(spinner=spinner)
+    effect.attach()
+    effect.detach()
+    before = spinner._rotation
+    effect.on_frame(_frame(rms=0.5))
+    assert spinner._rotation == before
+
+
+def test_double_attach_preserves_original_status(qtbot):
+    spinner = SpinnerIndicator()
+    qtbot.addWidget(spinner)
+    spinner.set_status("idle")
+    effect = SpinnerEffect(spinner=spinner)
+    assert effect.attach() is True
+    assert effect.attach() is True  # second attach is a no-op
+    effect.detach()
+    assert spinner._status == "idle"

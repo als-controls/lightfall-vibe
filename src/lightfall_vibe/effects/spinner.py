@@ -27,6 +27,8 @@ class SpinnerEffect:
         self._saved_status: str | None = None
 
     def attach(self) -> bool:
+        if self._saved_status is not None:  # already attached
+            return True
         spinner = self._spinner
         if spinner is None:
             window = find_main_window()
@@ -43,7 +45,7 @@ class SpinnerEffect:
 
     def on_frame(self, frame: VibeFrame) -> None:
         spinner = self._spinner
-        if spinner is None:
+        if spinner is None or self._saved_status is None:  # None = not attached
             return
         rate = _MAX_DEG_PER_FRAME * min(frame.rms / _RMS_FULL_SCALE, 1.0)
         if rate <= 0.0:
