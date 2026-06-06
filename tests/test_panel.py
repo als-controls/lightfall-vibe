@@ -26,7 +26,7 @@ def test_panel_updates_bar_heights(qtbot):
     panel = VibePanel()
     qtbot.addWidget(panel)
     panel._on_frame(_frame(heights=0.7))
-    heights = panel._bars.opts["height"]
+    _x, heights = panel._bars.getData()
     assert np.allclose(heights, 0.7)
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 import numpy as np
-import pyqtgraph as pg
+from lightfall.visualization import pg
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
 
@@ -74,12 +74,17 @@ class VibePanel(BasePanel):
         self._flash_timer.setInterval(_FLASH_MS)
         self._flash_timer.timeout.connect(self._end_flash)
 
+        self._brush_key = None
         self._apply_theme_colors()
         theme.colors_changed.connect(self._apply_theme_colors)
         get_conductor().frame_ready.connect(self._on_frame)
 
     def _apply_theme_colors(self) -> None:
         colors = ThemeManager.get_instance().colors
+        key = (colors.primary, colors.secondary, colors.background, colors.surface)
+        if key == self._brush_key:
+            return
+        self._brush_key = key
         self._brushes = _gradient_brushes(colors.primary, colors.secondary, N_BANDS)
         self._bg_normal = QColor(colors.background)
         self._bg_flash = QColor(colors.surface)
