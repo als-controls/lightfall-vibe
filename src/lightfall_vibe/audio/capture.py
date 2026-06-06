@@ -10,6 +10,8 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
+from loguru import logger
+
 from PySide6.QtCore import QObject, Signal
 
 from lightfall_vibe.audio.features import SpectrumAnalyzer
@@ -111,6 +113,8 @@ class CaptureWorker(QObject):
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                logger.warning("vibe-capture thread did not stop within 2 s; leaking it")
             self._thread = None
 
     def _run(self) -> None:

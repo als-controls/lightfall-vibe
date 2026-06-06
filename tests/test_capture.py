@@ -53,7 +53,7 @@ def test_stop_is_idempotent_and_joins(qtbot):
     assert not worker.is_running
 
 
-def test_stop_before_start_is_noop():
+def test_stop_before_start_is_noop(qtbot):
     worker = CaptureWorker(source_factory=lambda sr, bs: FakeRecorder())
     worker.stop()
     assert not worker.is_running
