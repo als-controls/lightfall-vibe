@@ -43,3 +43,24 @@ def test_detach_mid_pulse_restores_margins(qtbot):
 def test_attach_returns_false_without_target(qtbot):
     effect = DockPulseEffect(target=None)
     assert effect.attach() is False
+
+
+def test_second_beat_after_completed_pulse_does_not_crash(qtbot):
+    """Regression: per-beat animations with finished->deleteLater left
+    self._anim as a wrapper around a deleted C++ object; the next beat's
+    state() check raised RuntimeError (seen live 2026-06-06)."""
+    target = QWidget()
+    qtbot.addWidget(target)
+    effect = DockPulseEffect(target=target)
+    effect.attach()
+
+    effect.on_frame(_beat())
+    qtbot.waitUntil(lambda: target.contentsMargins().left() > 0, timeout=500)
+    qtbot.waitUntil(lambda: target.contentsMargins().left() == 0, timeout=1000)
+    qtbot.wait(50)  # extra event-loop turns: any deleteLater executes here
+
+    effect.on_frame(_beat())  # crashed with RuntimeError before the fix
+    qtbot.waitUntil(lambda: target.contentsMargins().left() > 0, timeout=500)
+    effect.detach()
+    margins = target.contentsMargins()
+    assert margins.left() == 0

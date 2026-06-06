@@ -49,33 +49,41 @@ class DockPulseEffect:
     def on_frame(self, frame: VibeFrame) -> None:
         if not frame.beat or self._target is None or self._base is None:
             return
-        if (
-            self._anim is not None
-            and self._anim.state() == QVariantAnimation.State.Running
-        ):
+        if self._anim is None:
+            self._anim = self._build_anim()
+        if self._anim.state() == QVariantAnimation.State.Running:
             return  # let the current pulse finish
+        self._anim.start()
+
+    def _build_anim(self) -> QVariantAnimation:
+        """One reusable animation per attach.
+
+        Per-beat instances either leak (no deleteLater) or leave
+        self._anim wrapping a deleted C++ object (finished->deleteLater
+        destroys it while the Python wrapper survives; the next beat's
+        state() check then raises RuntimeError -- seen live 2026-06-06).
+        """
         anim = QVariantAnimation(self._target)
         anim.setStartValue(0.0)
         anim.setKeyValueAt(0.3, float(_PULSE_PX))
         anim.setEndValue(0.0)
         anim.setDuration(_PULSE_MS)
+        anim.valueChanged.connect(self._apply_offset)
+        return anim
+
+    def _apply_offset(self, value: float) -> None:
+        if self._target is None or self._base is None:
+            return
         base = self._base
-        target = self._target
-
-        def apply(value: float) -> None:
-            offset = int(value)
-            target.setContentsMargins(
-                base[0] + offset, base[1] + offset, base[2] + offset, base[3] + offset
-            )
-
-        anim.valueChanged.connect(apply)
-        anim.finished.connect(anim.deleteLater)
-        self._anim = anim
-        anim.start()
+        offset = int(value)
+        self._target.setContentsMargins(
+            base[0] + offset, base[1] + offset, base[2] + offset, base[3] + offset
+        )
 
     def detach(self) -> None:
         if self._anim is not None:
             self._anim.stop()
+            self._anim.deleteLater()
             self._anim = None
         if self._target is not None and self._base is not None:
             self._target.setContentsMargins(*self._base)

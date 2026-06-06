@@ -43,9 +43,14 @@ class VibePanel(BasePanel):
         id="lightfall_vibe.panels.spectrum",
         name="Vibe",
         description="Music spectrum analyzer driving Vibe mode",
+        icon="music",  # bare name -> qtawesome fa5s.music in the sidebar
         category="Dev",
         keywords=["vibe", "music", "spectrum", "audio"],
-        default_area="right",
+        # The host's default layout only sweeps left/bottom/center areas;
+        # a preloaded "right" panel registers but is never surfaced.
+        default_area="bottom",
+        sidebar_group="bottom",
+        sidebar_order=8,  # after dev-plugins' record/viz/palette (5/6/7)
     )
 
     def _setup_ui(self) -> None:

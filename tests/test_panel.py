@@ -22,6 +22,17 @@ def test_plugin_provides_panel_class():
     assert plugin.get_panel_class() is VibePanel
 
 
+def test_panel_metadata_is_surfaceable_by_host():
+    """Regression: lightfall's default layout only sweeps the registry for
+    left/bottom/center areas (mainwindow._setup_default_panels); a preloaded
+    panel with default_area="right" registers fine but never appears.
+    An empty icon renders an invisible sidebar button (icon_sidebar).
+    """
+    meta = VibePanel.panel_metadata
+    assert meta.default_area in {"left", "bottom", "center"}
+    assert meta.icon
+
+
 def test_panel_updates_bar_heights(qtbot):
     panel = VibePanel()
     qtbot.addWidget(panel)
