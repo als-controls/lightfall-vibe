@@ -3,11 +3,11 @@
 Mutation mechanism mirrors lightfall-dev-plugins' palette_test_panel:
 setattr on ThemeManager._colors fields, then emit colors_changed.
 
-Accent fields rotate their hue; neutral chrome fields (background,
-surface, border, sea) get a low-saturation wash at the walking hue --
-a pure rotation would be a no-op on the achromatic grays most themes
-use there. Value/lightness is always preserved and text fields are
-never touched, so contrast survives.
+Foreground-only policy: accent fields rotate their hue, and border
+lines get a low-saturation wash at the walking hue (a pure rotation
+would be a no-op on the near-gray borders most themes use). Canvas
+fields (background, surface, sea) and text are never touched, so the
+page stays calm and contrast survives.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from lightfall.ui.theme.manager import ThemeManager
 from lightfall_vibe.audio.features import VibeFrame
 
 _ACCENT_FIELDS = ("primary", "secondary", "success", "warning", "error", "info")
-_TINT_FIELDS = ("background", "surface", "border", "sea")
+_TINT_FIELDS = ("border",)  # foreground lines only; canvas fields stay put
 _HUE_STEP_DEG = 47.0  # pseudo-golden step: cycles through hues non-repetitively
 _MIN_EMIT_INTERVAL_S = 0.1  # app-wide restyle is the perf hazard: cap at 10 Hz
 _TINT_SATURATION = 0.16  # subtle wash; high enough to read, low enough to read on

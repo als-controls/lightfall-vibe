@@ -55,25 +55,30 @@ def test_second_beat_after_completed_pulse_does_not_crash(qtbot):
     effect = DockPulseEffect(target=target)
     effect.attach()
 
+    effect.beats_per_pulse = 1  # pulse every beat: exercises reuse directly
     effect.on_frame(_beat())
     qtbot.waitUntil(lambda: target.contentsMargins().left() > 0, timeout=500)
     qtbot.waitUntil(lambda: target.contentsMargins().left() == 0, timeout=1000)
     qtbot.wait(50)  # extra event-loop turns: any deleteLater executes here
 
-    for _ in range(4):  # beats 2-5; the 5th is the next downbeat
-        effect.on_frame(_beat())  # crashed with RuntimeError before the fix
+    effect.on_frame(_beat())  # crashed with RuntimeError before the fix
     qtbot.waitUntil(lambda: target.contentsMargins().left() > 0, timeout=500)
     effect.detach()
     margins = target.contentsMargins()
     assert margins.left() == 0
 
 
-def test_pulses_only_every_fourth_beat(qtbot):
-    """No bar-phase tracking, so 'downbeat' = every 4th detected onset."""
+def test_default_divider_is_eight_beats():
+    assert DockPulseEffect().beats_per_pulse == 8
+
+
+def test_pulses_only_every_nth_beat(qtbot):
+    """No bar-phase tracking, so 'downbeat' = every Nth detected onset."""
     target = QWidget()
     qtbot.addWidget(target)
     effect = DockPulseEffect(target=target)
     effect.attach()
+    effect.beats_per_pulse = 4
 
     def _running() -> bool:
         return (

@@ -15,6 +15,7 @@ from PySide6.QtCore import QObject, Signal
 from lightfall_vibe.audio.capture import CaptureWorker
 from lightfall_vibe.audio.features import VibeFrame
 from lightfall_vibe.effects.base import VibeEffect
+from lightfall_vibe.effects.pulse import DEFAULT_BEATS_PER_PULSE
 
 EFFECT_NAMES = ("spinner", "theme", "pulse")
 DEFAULT_ENABLED = {"spinner": True, "theme": True, "pulse": False}
@@ -74,6 +75,7 @@ class VibeConductor(QObject):
         self._capture: QObject | None = None
         self.device_id: str | None = None
         self.sensitivity: float = 1.0
+        self.beats_per_pulse: int = DEFAULT_BEATS_PER_PULSE
 
     @property
     def is_running(self) -> bool:
@@ -98,6 +100,12 @@ class VibeConductor(QObject):
         capture = self._capture
         if capture is not None and hasattr(capture, "analyzer"):
             capture.analyzer.sensitivity = value  # plain float write: thread-safe
+
+    def set_beats_per_pulse(self, value: int) -> None:
+        self.beats_per_pulse = max(1, int(value))
+        active = self._active.get("pulse")
+        if active is not None and hasattr(active, "beats_per_pulse"):
+            active.beats_per_pulse = self.beats_per_pulse
 
     def start(self) -> None:
         if self.is_running:
@@ -130,6 +138,8 @@ class VibeConductor(QObject):
     def _attach_effect(self, name: str) -> None:
         try:
             effect = self._effect_factories[name]()
+            if hasattr(effect, "beats_per_pulse"):  # apply the live knob
+                effect.beats_per_pulse = self.beats_per_pulse
             if effect.attach():
                 self._active[name] = effect
             else:

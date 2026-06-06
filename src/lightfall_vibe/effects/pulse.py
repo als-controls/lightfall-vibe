@@ -16,7 +16,7 @@ _PULSE_PX = 4
 _PULSE_MS = 140
 # Pulse on the "downbeat" only. There's no bar-phase tracking (onset
 # detection, not beat tracking), so downbeat = every Nth detected beat.
-_BEATS_PER_PULSE = 4
+DEFAULT_BEATS_PER_PULSE = 8
 
 
 class DockPulseEffect:
@@ -29,6 +29,8 @@ class DockPulseEffect:
         self._anim: QVariantAnimation | None = None
         self._base: tuple[int, int, int, int] | None = None
         self._beat_count = 0
+        # Live-tunable from the settings page (via the conductor).
+        self.beats_per_pulse = DEFAULT_BEATS_PER_PULSE
 
     def attach(self) -> bool:
         if self._base is not None:  # already attached
@@ -55,7 +57,7 @@ class DockPulseEffect:
         if not frame.beat or self._target is None or self._base is None:
             return
         self._beat_count += 1
-        if (self._beat_count - 1) % _BEATS_PER_PULSE != 0:  # beats 1, 5, 9...
+        if (self._beat_count - 1) % self.beats_per_pulse != 0:  # beats 1, N+1...
             return
         if self._anim is None:
             self._anim = self._build_anim()

@@ -146,3 +146,26 @@ def test_late_frame_after_stop_is_dropped(qtbot):
     conductor.stop()
     capture.frame_ready.emit(_frame(beat=True))  # queued-late frame
     assert received == []
+
+
+def test_beats_per_pulse_applied_at_attach_and_live():
+    class TunableEffect(FakeEffect):
+        def __init__(self):
+            super().__init__(name="pulse")
+            self.beats_per_pulse = 4
+
+    effect = TunableEffect()
+    conductor, capture = _make([effect])
+    conductor.set_beats_per_pulse(8)
+    conductor.set_effect_enabled("pulse", True)
+    conductor.start()
+    assert effect.beats_per_pulse == 8  # applied when the effect attaches
+    conductor.set_beats_per_pulse(2)
+    assert effect.beats_per_pulse == 2  # written through while running
+    conductor.stop()
+
+
+def test_set_beats_per_pulse_clamps_to_one():
+    conductor, _capture = _make([])
+    conductor.set_beats_per_pulse(0)
+    assert conductor.beats_per_pulse == 1

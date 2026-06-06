@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -26,15 +27,17 @@ from lightfall.ui.preferences.manager import PreferencesManager
 
 from lightfall_vibe.audio.capture import list_devices
 from lightfall_vibe.conductor import EFFECT_NAMES, get_conductor
+from lightfall_vibe.effects.pulse import DEFAULT_BEATS_PER_PULSE
 
 PREF_DEVICE = "vibe.device_id"
 PREF_SENSITIVITY = "vibe.sensitivity"
+PREF_PULSE_BEATS = "vibe.pulse_beats"
 PREF_EFFECT = "vibe.effect.{}"  # .format(effect_name)
 
 _EFFECT_LABELS = {
     "spinner": "Spin the RunEngine spinner",
     "theme": "Shift theme colors on beats",
-    "pulse": "Pulse the layout on downbeats (every 4th beat)",
+    "pulse": "Pulse the layout on downbeats",
 }
 _LED_FLASH_MS = 120
 
@@ -46,6 +49,7 @@ class VibeSettingsPlugin(SettingsPlugin):
         self._enable_check: QCheckBox | None = None
         self._device_combo: QComboBox | None = None
         self._sensitivity_slider: QSlider | None = None
+        self._pulse_beats_spin: QSpinBox | None = None
         self._effect_checks: dict[str, QCheckBox] = {}
         self._beat_led: QLabel | None = None
         self._led_timer: QTimer | None = None
@@ -92,6 +96,13 @@ class VibeSettingsPlugin(SettingsPlugin):
         self._sensitivity_slider.setValue(10)
         self._sensitivity_slider.valueChanged.connect(self._on_sensitivity_changed)
         form.addRow("Beat sensitivity:", self._sensitivity_slider)
+
+        self._pulse_beats_spin = QSpinBox(widget)
+        self._pulse_beats_spin.setRange(1, 16)
+        self._pulse_beats_spin.setValue(conductor.beats_per_pulse)
+        self._pulse_beats_spin.setSuffix(" beats")
+        self._pulse_beats_spin.valueChanged.connect(self._on_pulse_beats_changed)
+        form.addRow("Pulse every:", self._pulse_beats_spin)
 
         led_row = QHBoxLayout()
         self._beat_led = QLabel(widget)
@@ -152,6 +163,9 @@ class VibeSettingsPlugin(SettingsPlugin):
     def _on_sensitivity_changed(self, value: int) -> None:
         get_conductor().set_sensitivity(value / 10.0)
 
+    def _on_pulse_beats_changed(self, value: int) -> None:
+        get_conductor().set_beats_per_pulse(value)
+
     def _on_conductor_started(self) -> None:
         self._sync_enable_check(True)
 
@@ -186,6 +200,7 @@ class VibeSettingsPlugin(SettingsPlugin):
         self._enable_check = None
         self._device_combo = None
         self._sensitivity_slider = None
+        self._pulse_beats_spin = None
         self._effect_checks = {}
         self._beat_led = None
         self._led_timer = None
@@ -232,6 +247,9 @@ class VibeSettingsPlugin(SettingsPlugin):
         if self._sensitivity_slider is not None:
             stored = prefs.get(PREF_SENSITIVITY, 1.0)
             self._sensitivity_slider.setValue(round(float(stored) * 10))
+        if self._pulse_beats_spin is not None:
+            stored_beats = prefs.get(PREF_PULSE_BEATS, DEFAULT_BEATS_PER_PULSE)
+            self._pulse_beats_spin.setValue(int(stored_beats))
         for effect_name, check in self._effect_checks.items():
             default = conductor.effect_enabled(effect_name)
             check.setChecked(bool(prefs.get(PREF_EFFECT.format(effect_name), default)))
@@ -246,6 +264,8 @@ class VibeSettingsPlugin(SettingsPlugin):
         prefs = PreferencesManager.get_instance()
         if self._sensitivity_slider is not None:
             prefs.set(PREF_SENSITIVITY, self._sensitivity_slider.value() / 10.0)
+        if self._pulse_beats_spin is not None:
+            prefs.set(PREF_PULSE_BEATS, self._pulse_beats_spin.value())
         for effect_name, check in self._effect_checks.items():
             prefs.set(PREF_EFFECT.format(effect_name), check.isChecked())
         if self._device_combo is not None:

@@ -79,18 +79,33 @@ def test_text_fields_are_never_touched(manager):
     effect.detach()
 
 
-def test_background_is_tinted_but_keeps_lightness(manager):
-    """Neutral chrome fields get a low-saturation wash at the walking hue
-    (pure hue rotation is a no-op on the gray backgrounds most themes use),
-    while value/lightness is preserved so text contrast survives."""
+def test_backgrounds_are_never_touched(manager):
+    """Foreground-only policy: canvas fields stay put; only accents and
+    border lines move with the music."""
+    effect = ThemeEffect(manager=manager)
+    effect.attach()
+    background = manager.colors.background
+    surface = manager.colors.surface
+    sea = manager.colors.sea
+    effect.on_frame(_beat())
+    assert manager.colors.background == background
+    assert manager.colors.surface == surface
+    assert manager.colors.sea == sea
+    effect.detach()
+
+
+def test_border_is_tinted_but_keeps_lightness(manager):
+    """Borders get a low-saturation wash at the walking hue (pure hue
+    rotation is a no-op on near-gray border colors), with value/lightness
+    preserved so contrast survives."""
     from PySide6.QtGui import QColor
 
     effect = ThemeEffect(manager=manager)
     effect.attach()
-    before = QColor(manager.colors.background)
+    before = QColor(manager.colors.border)
     effect.on_frame(_beat())
-    after = QColor(manager.colors.background)
-    assert after.name() != before.name()  # the whole app visibly tints
+    after = QColor(manager.colors.border)
+    assert after.name() != before.name()  # panel outlines visibly shift
     assert after.valueF() == pytest.approx(before.valueF(), abs=0.02)
     effect.detach()
 

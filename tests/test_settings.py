@@ -116,6 +116,44 @@ def test_save_and_load_settings_roundtrip(qtbot, conductor, monkeypatch):
     assert not plugin2._effect_checks["theme"].isChecked()
 
 
+def test_pulse_beats_spinbox_updates_conductor(qtbot, conductor):
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    assert plugin._pulse_beats_spin.value() == 8  # seeded from conductor default
+    plugin._pulse_beats_spin.setValue(2)
+    assert conductor.beats_per_pulse == 2
+
+
+def test_pulse_beats_persist_roundtrip(qtbot, conductor, monkeypatch):
+    stored = {}
+
+    class FakePrefs:
+        def get(self, key, default=None):
+            return stored.get(key, default)
+
+        def set(self, key, value):
+            stored[key] = value
+
+    import lightfall_vibe.settings as settings_mod
+
+    monkeypatch.setattr(
+        settings_mod.PreferencesManager, "get_instance", staticmethod(FakePrefs)
+    )
+
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    plugin._pulse_beats_spin.setValue(12)
+    plugin.save_settings()
+
+    plugin2 = VibeSettingsPlugin()
+    widget2 = plugin2.create_widget()
+    qtbot.addWidget(widget2)
+    plugin2.load_settings()
+    assert plugin2._pulse_beats_spin.value() == 12
+
+
 def test_destroyed_widget_then_beat_does_not_crash(qtbot, conductor):
     plugin = VibeSettingsPlugin()
     widget = plugin.create_widget()
