@@ -6,17 +6,29 @@ QApplication and reusable from any thread.
 
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
 
 N_BANDS = 24
-_REFRACTORY_S = 0.15  # min time between beats
-_FLUX_WINDOW_S = 1.0  # rolling window for the adaptive beat threshold
-_PEAK_DECAY = 0.999  # per-block decay of the auto-gain peak tracker
+_PEAK_DECAY = 0.999  # per-block decay of the display auto-gain peak tracker
 _SMOOTH_DECAY = 0.82  # band display smoothing (fast attack, slow decay)
-_FLUX_FLOOR = 0.02  # absolute flux floor so silence never beats
+
+# --- Kick detection -------------------------------------------------------
+# Kicks live here; computed from the RAW spectrum, not the auto-gained
+# display bands (auto-gain couples bass flux to whatever band is loudest).
+_KICK_LO_HZ = 40.0
+_KICK_HI_HZ = 160.0
+# A beat must be at least this fraction as strong as the strongest recent
+# kick onset. This is the "kick memory" that keeps the detector silent when
+# the kicks pause but a quieter bassline keeps playing (live report
+# 2026-06-06): a relative-only threshold collapses during the pause and
+# promotes bass wobble to beats.
+_REL_THRESHOLD = 0.3
+_ONSET_PEAK_HALFLIFE_S = 8.0  # kick memory fade: quieter songs recalibrate
+_ONSET_SMOOTH = 0.5  # one-pole smoothing of the onset envelope
+_REFRACTORY_S = 0.25  # min time between beats (240 BPM ceiling)
+_RMS_GATE = 1e-4  # ignore blocks that are essentially silence
 
 
 @dataclass(frozen=True)
@@ -28,8 +40,8 @@ class VibeFrame:
         rms: Root-mean-square level of the (padded/truncated) block.
         centroid: Spectral centroid, log-normalized to [0, 1] over the
             analyzer's frequency range (0 = bass-heavy, 1 = bright).
-        flux: Positive bass-band spectral flux for this block.
-        beat: True if this block is an onset (beat).
+        flux: Kick onset strength relative to the recent kick peak, ~[0, 1].
+        beat: True if this block is a kick onset (beat).
     """
 
     bands: np.ndarray
@@ -43,8 +55,11 @@ class SpectrumAnalyzer:
     """Stateful block-by-block spectral analyzer.
 
     Feed equal-size mono blocks to process(); get a VibeFrame per block.
-    Beat detection is classic bass spectral-flux onset detection with an
-    adaptive (rolling-median) threshold and a refractory period.
+    Beat detection is kick (40-160 Hz) spectral-flux onset detection,
+    anchored to a slow-decaying peak of recent kick onsets: an onset only
+    counts as a beat if it is comparable in strength to the kicks the
+    detector has recently heard, so pauses in the kick pattern stay silent
+    instead of degenerating into noise-triggering.
     """
 
     def __init__(
@@ -69,13 +84,19 @@ class SpectrumAnalyzer:
         edges = np.geomspace(self.f_lo, self.f_hi, n_bands + 1)
         self._band_idx = np.searchsorted(self._freqs, edges)
 
-        self._bass_bands = max(1, n_bands // 6)  # ~4 of 24: the "kick" region
-
         self._smoothed = np.zeros(n_bands)
         self._peak = 1e-9
-        self._prev_bass = 0.0
-        blocks_per_window = max(int(_FLUX_WINDOW_S * samplerate / block_size), 4)
-        self._flux_history: deque[float] = deque(maxlen=blocks_per_window)
+
+        # Kick detector state. The raw-spectrum bin range is independent of
+        # the display banding above.
+        kick_lo = np.searchsorted(self._freqs, _KICK_LO_HZ)
+        kick_hi = max(np.searchsorted(self._freqs, _KICK_HI_HZ), kick_lo + 1)
+        self._kick_slice = slice(kick_lo, kick_hi)
+        self._prev_kick_energy = 0.0
+        self._onset_smoothed = 0.0
+        self._onset_peak = 1e-12
+        blocks_per_halflife = _ONSET_PEAK_HALFLIFE_S * samplerate / block_size
+        self._onset_peak_decay = 0.5 ** (1.0 / blocks_per_halflife)
         self._refractory_blocks = max(
             int(_REFRACTORY_S * samplerate / block_size), 1
         )
@@ -98,6 +119,7 @@ class SpectrumAnalyzer:
             raw_bands[i] = spec[lo:hi].mean()
 
         # Auto-gain: normalize against a slowly decaying running peak.
+        # (Display only -- the kick detector below uses the raw spectrum.)
         self._peak = max(self._peak * _PEAK_DECAY, float(raw_bands.max()), 1e-9)
         norm = np.clip(raw_bands / self._peak, 0.0, 1.0)
 
@@ -117,27 +139,35 @@ class SpectrumAnalyzer:
         else:
             centroid = 0.0
 
-        bass = float(norm[:self._bass_bands].sum())
-        flux = max(0.0, bass - self._prev_bass)
-        self._prev_bass = bass
+        # --- Kick onset detection ------------------------------------
+        kick_energy = float(spec[self._kick_slice].sum())
+        onset = max(0.0, kick_energy - self._prev_kick_energy)
+        self._prev_kick_energy = kick_energy
+        self._onset_smoothed = (
+            _ONSET_SMOOTH * onset + (1.0 - _ONSET_SMOOTH) * self._onset_smoothed
+        )
+        # Kick memory: remembers how strong real kicks are, fading with a
+        # multi-second half-life so quieter material can recalibrate.
+        self._onset_peak = max(
+            self._onset_peak * self._onset_peak_decay,
+            self._onset_smoothed,
+            1e-12,
+        )
+        rel = self._onset_smoothed / self._onset_peak
 
         beat = False
         if self._refractory > 0:
             self._refractory -= 1
-        elif len(self._flux_history) >= 4:
-            median = float(np.median(self._flux_history))
-            threshold = max(
-                median * 1.5 / max(self.sensitivity, 0.1), _FLUX_FLOOR
-            )
-            if flux > threshold:
+        elif rms > _RMS_GATE:
+            threshold = min(_REL_THRESHOLD / max(self.sensitivity, 0.1), 0.95)
+            if rel > threshold:
                 beat = True
                 self._refractory = self._refractory_blocks
-        self._flux_history.append(flux)
 
         return VibeFrame(
             bands=self._smoothed.copy(),
             rms=rms,
             centroid=centroid,
-            flux=flux,
+            flux=rel,
             beat=beat,
         )

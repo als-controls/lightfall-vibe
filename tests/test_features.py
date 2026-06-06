@@ -32,6 +32,25 @@ def _click_track(bpm: float, seconds: float) -> np.ndarray:
     return out
 
 
+def _kick_track(bpm: float, seconds: float, amplitude: float = 0.8) -> np.ndarray:
+    """Silence with 50 ms 60 Hz tone bursts (synthetic kick drum)."""
+    out = np.zeros(int(SR * seconds))
+    interval = int(SR * 60.0 / bpm)
+    burst_len = int(SR * 0.05)
+    t = np.arange(burst_len) / SR
+    burst = amplitude * np.sin(2 * np.pi * 60.0 * t) * np.linspace(1, 0, burst_len)
+    for start in range(0, len(out) - burst_len, interval):
+        out[start : start + burst_len] = burst
+    return out
+
+
+def _bassline_wobble(seconds: float, amplitude: float = 0.15) -> np.ndarray:
+    """Sustained quiet bass with slow amplitude modulation (no kicks)."""
+    t = np.arange(int(SR * seconds)) / SR
+    am = 0.8 + 0.2 * np.sin(2 * np.pi * 2.0 * t)  # 2 Hz swell
+    return amplitude * am * np.sin(2 * np.pi * 70.0 * t)
+
+
 def test_silence_produces_no_beats_and_zero_rms():
     analyzer = SpectrumAnalyzer(samplerate=SR, block_size=BLOCK)
     frames = _run_signal(analyzer, np.zeros(SR * 2))
@@ -96,3 +115,36 @@ def test_short_block_is_padded_not_crashed():
     analyzer = SpectrumAnalyzer(samplerate=SR, block_size=BLOCK)
     frame = analyzer.process(np.zeros(100))
     assert frame.bands.shape == (N_BANDS,)
+
+
+def test_kick_track_beats_detected():
+    analyzer = SpectrumAnalyzer(samplerate=SR, block_size=BLOCK)
+    # 120 BPM for 4 seconds = 8 synthetic kicks.
+    frames = _run_signal(analyzer, _kick_track(120, 4.0))
+    n_beats = sum(f.beat for f in frames)
+    assert 5 <= n_beats <= 11
+
+
+def test_kick_pause_with_residual_bassline_stays_silent():
+    """Regression (live report 2026-06-06): when the kicks pause but a quiet
+    bassline keeps playing, the detector must NOT keep firing. Onset strength
+    is anchored to the recent kick peak, not just a relative median."""
+    analyzer = SpectrumAnalyzer(samplerate=SR, block_size=BLOCK)
+    signal = np.concatenate([_kick_track(120, 4.0), _bassline_wobble(4.0)])
+    frames = _run_signal(analyzer, signal)
+    n_pause_frames = int(SR * 4.0) // BLOCK
+    pause_beats = sum(f.beat for f in frames[-n_pause_frames:])
+    assert pause_beats == 0
+
+
+def test_detector_recalibrates_after_long_quiet_spell():
+    """The kick-peak anchor decays: a genuinely quieter song must still get
+    beats once the loud-song memory fades (~tens of seconds)."""
+    analyzer = SpectrumAnalyzer(samplerate=SR, block_size=BLOCK)
+    loud = _kick_track(120, 4.0, amplitude=0.8)
+    silence = np.zeros(int(SR * 30.0))
+    quiet = _kick_track(120, 4.0, amplitude=0.1)
+    frames = _run_signal(analyzer, np.concatenate([loud, silence, quiet]))
+    n_quiet_frames = int(SR * 4.0) // BLOCK
+    quiet_beats = sum(f.beat for f in frames[-n_quiet_frames:])
+    assert quiet_beats >= 4
