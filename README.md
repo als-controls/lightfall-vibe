@@ -1,5 +1,9 @@
 # lightfall-vibe
 
+---
+
+The Lightfall plugin you didn't know you didn't need. 
+
 Vibe mode for [Lightfall](https://git.als.lbl.gov/ncs/lightfall): a demo plugin
 that makes the UI react to whatever music is playing.
 
