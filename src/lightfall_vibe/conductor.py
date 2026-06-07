@@ -15,10 +15,13 @@ from PySide6.QtCore import QObject, Signal
 from lightfall_vibe.audio.capture import CaptureWorker
 from lightfall_vibe.audio.features import VibeFrame
 from lightfall_vibe.effects.base import VibeEffect
-from lightfall_vibe.effects.pulse import DEFAULT_BEATS_PER_PULSE
+from lightfall_vibe.effects.pulse import DEFAULT_BEATS_PER_PULSE, DEFAULT_PULSE_PX
 
 EFFECT_NAMES = ("spinner", "theme", "pulse")
 DEFAULT_ENABLED = {"spinner": True, "theme": True, "pulse": False}
+# Beat-threshold multiplier (>1.0 = more beats). 1.5 sits on the settings
+# slider's third tick (5..30 in 0.1x units, ticks every 0.5x).
+DEFAULT_SENSITIVITY = 1.5
 
 
 def _default_capture_factory(device_id: str | None, sensitivity: float):
@@ -74,8 +77,9 @@ class VibeConductor(QObject):
         self._active: dict[str, VibeEffect] = {}
         self._capture: QObject | None = None
         self.device_id: str | None = None
-        self.sensitivity: float = 1.0
+        self.sensitivity: float = DEFAULT_SENSITIVITY
         self.beats_per_pulse: int = DEFAULT_BEATS_PER_PULSE
+        self.pulse_px: int = DEFAULT_PULSE_PX
 
     @property
     def is_running(self) -> bool:
@@ -106,6 +110,12 @@ class VibeConductor(QObject):
         active = self._active.get("pulse")
         if active is not None and hasattr(active, "beats_per_pulse"):
             active.beats_per_pulse = self.beats_per_pulse
+
+    def set_pulse_px(self, value: int) -> None:
+        self.pulse_px = max(1, int(value))
+        active = self._active.get("pulse")
+        if active is not None and hasattr(active, "pulse_px"):
+            active.pulse_px = self.pulse_px
 
     def start(self) -> None:
         if self.is_running:
@@ -138,8 +148,10 @@ class VibeConductor(QObject):
     def _attach_effect(self, name: str) -> None:
         try:
             effect = self._effect_factories[name]()
-            if hasattr(effect, "beats_per_pulse"):  # apply the live knob
+            if hasattr(effect, "beats_per_pulse"):  # apply the live knobs
                 effect.beats_per_pulse = self.beats_per_pulse
+            if hasattr(effect, "pulse_px"):
+                effect.pulse_px = self.pulse_px
             if effect.attach():
                 self._active[name] = effect
             else:

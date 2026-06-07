@@ -169,3 +169,22 @@ def test_set_beats_per_pulse_clamps_to_one():
     conductor, _capture = _make([])
     conductor.set_beats_per_pulse(0)
     assert conductor.beats_per_pulse == 1
+
+
+def test_set_pulse_px_applies_on_attach_and_live():
+    effect = FakeEffect(name="pulse")
+    effect.pulse_px = 0  # knob the conductor should drive (hasattr check)
+    conductor, capture = _make([effect])
+    conductor.set_effect_enabled("pulse", True)
+    conductor.set_pulse_px(7)
+    conductor.start()
+    assert effect.pulse_px == 7  # applied on attach
+    conductor.set_pulse_px(9)
+    assert effect.pulse_px == 9  # applied live
+    conductor.stop()
+
+
+def test_set_pulse_px_clamps_to_at_least_one():
+    conductor, _ = _make([])
+    conductor.set_pulse_px(0)
+    assert conductor.pulse_px == 1

@@ -1,8 +1,9 @@
 """Vibe mode settings page.
 
-The Enable toggle is deliberately session-only: vibe mode never starts
-capturing audio at app launch. Everything else (device, sensitivity,
-effect toggles) persists via PreferencesManager.
+Everything persists via PreferencesManager, including the Enable toggle:
+on_loaded() (preload) pushes saved prefs into the conductor at startup
+and, if vibe mode was enabled, starts it once the event loop is running
+(the main window exists by then, so effects find their targets).
 """
 
 from __future__ import annotations
@@ -26,12 +27,14 @@ from lightfall.plugins.settings_plugin import SettingsPlugin
 from lightfall.ui.preferences.manager import PreferencesManager
 
 from lightfall_vibe.audio.capture import list_devices
-from lightfall_vibe.conductor import EFFECT_NAMES, get_conductor
-from lightfall_vibe.effects.pulse import DEFAULT_BEATS_PER_PULSE
+from lightfall_vibe.conductor import DEFAULT_SENSITIVITY, EFFECT_NAMES, get_conductor
+from lightfall_vibe.effects.pulse import DEFAULT_BEATS_PER_PULSE, DEFAULT_PULSE_PX
 
+PREF_ENABLED = "vibe.enabled"
 PREF_DEVICE = "vibe.device_id"
 PREF_SENSITIVITY = "vibe.sensitivity"
 PREF_PULSE_BEATS = "vibe.pulse_beats"
+PREF_PULSE_PX = "vibe.pulse_px"
 PREF_EFFECT = "vibe.effect.{}"  # .format(effect_name)
 
 _EFFECT_LABELS = {
@@ -50,6 +53,7 @@ class VibeSettingsPlugin(SettingsPlugin):
         self._device_combo: QComboBox | None = None
         self._sensitivity_slider: QSlider | None = None
         self._pulse_beats_spin: QSpinBox | None = None
+        self._pulse_px_slider: QSlider | None = None
         self._effect_checks: dict[str, QCheckBox] = {}
         self._beat_led: QLabel | None = None
         self._led_timer: QTimer | None = None
@@ -93,7 +97,9 @@ class VibeSettingsPlugin(SettingsPlugin):
 
         self._sensitivity_slider = QSlider(Qt.Orientation.Horizontal, widget)
         self._sensitivity_slider.setRange(5, 30)  # 0.5x .. 3.0x
-        self._sensitivity_slider.setValue(10)
+        self._sensitivity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._sensitivity_slider.setTickInterval(5)  # ticks every 0.5x
+        self._sensitivity_slider.setValue(round(conductor.sensitivity * 10))
         self._sensitivity_slider.valueChanged.connect(self._on_sensitivity_changed)
         form.addRow("Beat sensitivity:", self._sensitivity_slider)
 
@@ -103,6 +109,14 @@ class VibeSettingsPlugin(SettingsPlugin):
         self._pulse_beats_spin.setSuffix(" beats")
         self._pulse_beats_spin.valueChanged.connect(self._on_pulse_beats_changed)
         form.addRow("Pulse every:", self._pulse_beats_spin)
+
+        self._pulse_px_slider = QSlider(Qt.Orientation.Horizontal, widget)
+        self._pulse_px_slider.setRange(1, 12)  # margin offset in px
+        self._pulse_px_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._pulse_px_slider.setTickInterval(1)
+        self._pulse_px_slider.setValue(conductor.pulse_px)
+        self._pulse_px_slider.valueChanged.connect(self._on_pulse_px_changed)
+        form.addRow("Pulse magnitude:", self._pulse_px_slider)
 
         led_row = QHBoxLayout()
         self._beat_led = QLabel(widget)
@@ -166,6 +180,9 @@ class VibeSettingsPlugin(SettingsPlugin):
     def _on_pulse_beats_changed(self, value: int) -> None:
         get_conductor().set_beats_per_pulse(value)
 
+    def _on_pulse_px_changed(self, value: int) -> None:
+        get_conductor().set_pulse_px(value)
+
     def _on_conductor_started(self) -> None:
         self._sync_enable_check(True)
 
@@ -201,6 +218,7 @@ class VibeSettingsPlugin(SettingsPlugin):
         self._device_combo = None
         self._sensitivity_slider = None
         self._pulse_beats_spin = None
+        self._pulse_px_slider = None
         self._effect_checks = {}
         self._beat_led = None
         self._led_timer = None
@@ -222,6 +240,11 @@ class VibeSettingsPlugin(SettingsPlugin):
         if self._device_combo is None:
             return
         current = self._device_combo.currentData()
+        if current is None:
+            # Fresh combo (dialog just opened): re-select the conductor's
+            # device so a running capture isn't restarted onto whatever
+            # device happens to enumerate first.
+            current = get_conductor().device_id
         self._device_combo.blockSignals(True)
         self._device_combo.clear()
         devices = list_devices()
@@ -242,14 +265,21 @@ class VibeSettingsPlugin(SettingsPlugin):
     # --- SettingsPlugin persistence ------------------------------------
 
     def load_settings(self) -> None:
+        # The Enable checkbox is deliberately not loaded from prefs: it
+        # always mirrors the live conductor state (create_widget seeds it,
+        # started/stopped signals keep it in sync). PREF_ENABLED is only
+        # read once at startup, in on_loaded().
         prefs = PreferencesManager.get_instance()
         conductor = get_conductor()
         if self._sensitivity_slider is not None:
-            stored = prefs.get(PREF_SENSITIVITY, 1.0)
+            stored = prefs.get(PREF_SENSITIVITY, DEFAULT_SENSITIVITY)
             self._sensitivity_slider.setValue(round(float(stored) * 10))
         if self._pulse_beats_spin is not None:
             stored_beats = prefs.get(PREF_PULSE_BEATS, DEFAULT_BEATS_PER_PULSE)
             self._pulse_beats_spin.setValue(int(stored_beats))
+        if self._pulse_px_slider is not None:
+            stored_px = prefs.get(PREF_PULSE_PX, DEFAULT_PULSE_PX)
+            self._pulse_px_slider.setValue(int(stored_px))
         for effect_name, check in self._effect_checks.items():
             default = conductor.effect_enabled(effect_name)
             check.setChecked(bool(prefs.get(PREF_EFFECT.format(effect_name), default)))
@@ -262,13 +292,43 @@ class VibeSettingsPlugin(SettingsPlugin):
 
     def save_settings(self) -> None:
         prefs = PreferencesManager.get_instance()
+        if self._enable_check is not None:
+            prefs.set(PREF_ENABLED, self._enable_check.isChecked())
         if self._sensitivity_slider is not None:
             prefs.set(PREF_SENSITIVITY, self._sensitivity_slider.value() / 10.0)
         if self._pulse_beats_spin is not None:
             prefs.set(PREF_PULSE_BEATS, self._pulse_beats_spin.value())
+        if self._pulse_px_slider is not None:
+            prefs.set(PREF_PULSE_PX, self._pulse_px_slider.value())
         for effect_name, check in self._effect_checks.items():
             prefs.set(PREF_EFFECT.format(effect_name), check.isChecked())
         if self._device_combo is not None:
             device_id = self._device_combo.currentData()
             if device_id is not None:
                 prefs.set(PREF_DEVICE, device_id)
+
+    def on_loaded(self) -> None:
+        """Restore persisted vibe settings at startup (preload hook).
+
+        Runs before the main window exists, so everything here only
+        configures the conductor; the actual start is deferred one event-
+        loop turn, by which point the window (and effect targets) exist.
+        """
+        prefs = PreferencesManager.get_instance()
+        conductor = get_conductor()
+        conductor.set_sensitivity(
+            float(prefs.get(PREF_SENSITIVITY, DEFAULT_SENSITIVITY))
+        )
+        conductor.set_beats_per_pulse(
+            int(prefs.get(PREF_PULSE_BEATS, DEFAULT_BEATS_PER_PULSE))
+        )
+        conductor.set_pulse_px(int(prefs.get(PREF_PULSE_PX, DEFAULT_PULSE_PX)))
+        for effect_name in EFFECT_NAMES:
+            stored = prefs.get(PREF_EFFECT.format(effect_name), None)
+            if stored is not None:
+                conductor.set_effect_enabled(effect_name, bool(stored))
+        stored_device = prefs.get(PREF_DEVICE, None)
+        if stored_device is not None:
+            conductor.device_id = stored_device
+        if bool(prefs.get(PREF_ENABLED, False)):
+            QTimer.singleShot(0, conductor.start)

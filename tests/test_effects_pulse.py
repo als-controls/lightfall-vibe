@@ -72,6 +72,35 @@ def test_default_divider_is_eight_beats():
     assert DockPulseEffect().beats_per_pulse == 8
 
 
+def test_default_pulse_px_is_four():
+    assert DockPulseEffect().pulse_px == 4
+
+
+def test_pulse_px_scales_the_pulse(qtbot):
+    """pulse_px is live-tunable: a bigger value yields bigger margins,
+    even on an animation object built before the change."""
+    target = QWidget()
+    qtbot.addWidget(target)
+    target.setContentsMargins(0, 0, 0, 0)
+    effect = DockPulseEffect(target=target)
+    effect.attach()
+    effect.beats_per_pulse = 1
+
+    effect.on_frame(_beat())  # builds the reusable animation at px=4
+    qtbot.waitUntil(lambda: target.contentsMargins().left() > 0, timeout=500)
+    qtbot.waitUntil(
+        lambda: effect._anim.state() != QVariantAnimation.State.Running,
+        timeout=1000,
+    )
+
+    effect.pulse_px = 12
+    effect.on_frame(_beat())
+    # The default peak is 4; exceeding it proves the new magnitude applied.
+    qtbot.waitUntil(lambda: target.contentsMargins().left() > 4, timeout=500)
+    effect.detach()
+    assert target.contentsMargins().left() == 0
+
+
 def test_pulses_only_every_nth_beat(qtbot):
     """No bar-phase tracking, so 'downbeat' = every Nth detected onset."""
     target = QWidget()

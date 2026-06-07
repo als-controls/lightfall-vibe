@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QWidget
 from lightfall_vibe.audio.features import VibeFrame
 from lightfall_vibe.effects.base import find_main_window
 
-_PULSE_PX = 4
+DEFAULT_PULSE_PX = 4
 _PULSE_MS = 140
 # Pulse on the "downbeat" only. There's no bar-phase tracking (onset
 # detection, not beat tracking), so downbeat = every Nth detected beat.
@@ -20,7 +20,7 @@ DEFAULT_BEATS_PER_PULSE = 8
 
 
 class DockPulseEffect:
-    """Animates contentsMargins base -> base+_PULSE_PX -> base on downbeats."""
+    """Animates contentsMargins base -> base+pulse_px -> base on downbeats."""
 
     name = "pulse"
 
@@ -31,6 +31,7 @@ class DockPulseEffect:
         self._beat_count = 0
         # Live-tunable from the settings page (via the conductor).
         self.beats_per_pulse = DEFAULT_BEATS_PER_PULSE
+        self.pulse_px = DEFAULT_PULSE_PX
 
     def attach(self) -> bool:
         if self._base is not None:  # already attached
@@ -63,6 +64,9 @@ class DockPulseEffect:
             self._anim = self._build_anim()
         if self._anim.state() == QVariantAnimation.State.Running:
             return  # let the current pulse finish
+        # Refresh the peak each pulse: pulse_px is live-tunable while the
+        # reusable animation object persists across beats.
+        self._anim.setKeyValueAt(0.3, float(self.pulse_px))
         self._anim.start()
 
     def _build_anim(self) -> QVariantAnimation:
@@ -75,7 +79,7 @@ class DockPulseEffect:
         """
         anim = QVariantAnimation(self._target)
         anim.setStartValue(0.0)
-        anim.setKeyValueAt(0.3, float(_PULSE_PX))
+        anim.setKeyValueAt(0.3, float(self.pulse_px))
         anim.setEndValue(0.0)
         anim.setDuration(_PULSE_MS)
         anim.valueChanged.connect(self._apply_offset)

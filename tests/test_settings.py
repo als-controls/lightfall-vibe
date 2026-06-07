@@ -185,6 +185,116 @@ def test_self_stop_unchecks_enable(qtbot, conductor):
     assert not plugin._enable_check.isChecked()
 
 
+class FakePrefs:
+    """Dict-backed PreferencesManager stand-in (one shared store per use)."""
+
+    def __init__(self, stored):
+        self._stored = stored
+
+    def get(self, key, default=None):
+        return self._stored.get(key, default)
+
+    def set(self, key, value):
+        self._stored[key] = value
+
+
+def _install_prefs(monkeypatch, stored):
+    import lightfall_vibe.settings as settings_mod
+
+    monkeypatch.setattr(
+        settings_mod.PreferencesManager,
+        "get_instance",
+        staticmethod(lambda: FakePrefs(stored)),
+    )
+
+
+def test_sensitivity_defaults_to_third_tick(qtbot, conductor):
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    slider = plugin._sensitivity_slider
+    # Ticks every 0.5x from the 0.5x minimum; 3rd tick = 1.5x.
+    assert slider.tickInterval() == 5
+    assert slider.value() == 15
+    assert conductor.sensitivity == pytest.approx(1.5)
+
+
+def test_pulse_px_slider_updates_conductor(qtbot, conductor):
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    assert plugin._pulse_px_slider.value() == 4  # seeded from conductor default
+    plugin._pulse_px_slider.setValue(9)
+    assert conductor.pulse_px == 9
+
+
+def test_pulse_px_persist_roundtrip(qtbot, conductor, monkeypatch):
+    stored = {}
+    _install_prefs(monkeypatch, stored)
+
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    plugin._pulse_px_slider.setValue(11)
+    plugin.save_settings()
+
+    plugin2 = VibeSettingsPlugin()
+    widget2 = plugin2.create_widget()
+    qtbot.addWidget(widget2)
+    plugin2.load_settings()
+    assert plugin2._pulse_px_slider.value() == 11
+
+
+def test_enable_state_is_saved(qtbot, conductor, monkeypatch):
+    stored = {}
+    _install_prefs(monkeypatch, stored)
+
+    plugin = VibeSettingsPlugin()
+    widget = plugin.create_widget()
+    qtbot.addWidget(widget)
+    plugin._enable_check.setChecked(True)
+    plugin.save_settings()
+    assert stored["vibe.enabled"] is True
+
+    plugin._enable_check.setChecked(False)
+    plugin.save_settings()
+    assert stored["vibe.enabled"] is False
+
+
+def test_on_loaded_restores_prefs_and_starts_when_enabled(
+    qtbot, conductor, monkeypatch
+):
+    stored = {
+        "vibe.enabled": True,
+        "vibe.sensitivity": 2.5,
+        "vibe.pulse_beats": 4,
+        "vibe.pulse_px": 9,
+        "vibe.effect.pulse": True,
+        "vibe.device_id": "dev42",
+    }
+    _install_prefs(monkeypatch, stored)
+
+    plugin = VibeSettingsPlugin()
+    plugin.on_loaded()
+    assert conductor.sensitivity == pytest.approx(2.5)
+    assert conductor.beats_per_pulse == 4
+    assert conductor.pulse_px == 9
+    assert conductor.effect_enabled("pulse")
+    assert conductor.device_id == "dev42"
+    # Start is deferred one event-loop turn (main window exists by then).
+    assert not conductor.is_running
+    qtbot.waitUntil(lambda: conductor.is_running, timeout=1000)
+
+
+def test_on_loaded_does_not_start_when_disabled(qtbot, conductor, monkeypatch):
+    _install_prefs(monkeypatch, {})
+
+    plugin = VibeSettingsPlugin()
+    plugin.on_loaded()
+    qtbot.wait(50)  # give a wrongly-scheduled start a chance to fire
+    assert not conductor.is_running
+
+
 def test_reopening_settings_does_not_restart_running_capture(qtbot, conductor):
     stored = {}
 

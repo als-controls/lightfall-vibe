@@ -11,6 +11,9 @@ manifest = PluginManifest(
             type_name="settings",
             name="vibe",
             import_path="lightfall_vibe.settings:VibeSettingsPlugin",
+            # preload so on_loaded() runs at startup to restore persisted
+            # vibe state (the loader only calls it for preload plugins).
+            preload=True,
         ),
         PluginEntry(
             type_name="panel",
