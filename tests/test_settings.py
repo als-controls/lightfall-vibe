@@ -156,8 +156,9 @@ def test_pulse_beats_persist_roundtrip(qtbot, conductor, monkeypatch):
 
 def test_destroyed_widget_then_beat_does_not_crash(qtbot, conductor):
     plugin = VibeSettingsPlugin()
+    # Deliberately NOT qtbot.addWidget(): the test destroys the widget
+    # itself, and pytest-qt teardown would close a deleted C++ object.
     widget = plugin.create_widget()
-    qtbot.addWidget(widget)
     widget.deleteLater()
     qtbot.waitUntil(lambda: plugin._beat_led is None, timeout=1000)
     conductor.beat.emit()  # must not raise against deleted widgets
@@ -165,8 +166,7 @@ def test_destroyed_widget_then_beat_does_not_crash(qtbot, conductor):
 
 def test_reopen_does_not_accumulate_connections(qtbot, conductor):
     plugin = VibeSettingsPlugin()
-    w1 = plugin.create_widget()
-    qtbot.addWidget(w1)
+    w1 = plugin.create_widget()  # destroyed below; not registered with qtbot
     w1.deleteLater()
     qtbot.waitUntil(lambda: plugin._beat_led is None, timeout=1000)
     w2 = plugin.create_widget()
@@ -204,8 +204,7 @@ def test_reopening_settings_does_not_restart_running_capture(qtbot, conductor):
     )
 
     plugin = VibeSettingsPlugin()
-    widget = plugin.create_widget()
-    qtbot.addWidget(widget)
+    widget = plugin.create_widget()  # destroyed below; not registered with qtbot
     plugin._enable_check.setChecked(True)
     assert conductor.is_running
     stops = []
