@@ -8,6 +8,7 @@ extra marshaling is needed.
 from __future__ import annotations
 
 import threading
+import warnings
 from typing import Callable
 
 from loguru import logger
@@ -18,6 +19,32 @@ from lightfall_vibe.audio.features import SpectrumAnalyzer
 
 _SAMPLERATE = 48000
 _BLOCK_SIZE = 1024
+
+_warnings_silenced = False
+
+
+def _silence_discontinuity_warnings() -> None:
+    """Mute soundcard's benign 'data discontinuity in recording' warning.
+
+    Loopback capture underruns (the OS hands us a gap in the buffer) raise
+    a SoundcardRuntimeWarning per occurrence; they don't affect the
+    spectrum or beat detection, so we filter that one message by category.
+    Installed once, process-wide -- nothing else is suppressed.
+    """
+    global _warnings_silenced
+    if _warnings_silenced:
+        return
+    try:
+        import soundcard as sc
+
+        warnings.filterwarnings(
+            "ignore",
+            message="data discontinuity in recording",
+            category=sc.SoundcardRuntimeWarning,
+        )
+        _warnings_silenced = True
+    except Exception:
+        pass  # no soundcard / no such category: nothing to silence
 
 # A source factory takes (samplerate, block_size) and returns a context
 # manager whose value has .record(numframes) -> ndarray (frames, channels).
@@ -61,6 +88,7 @@ def _soundcard_factory(device_id: str | None) -> SourceFactory:
     def factory(samplerate: int, block_size: int):
         import soundcard as sc
 
+        _silence_discontinuity_warnings()
         dev = device_id or default_device_id()
         if dev is None:
             raise RuntimeError("No loopback device found; pick one in settings")

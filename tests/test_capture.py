@@ -1,8 +1,14 @@
 """Tests for CaptureWorker using a fake audio source (no hardware)."""
 
-import numpy as np
+import warnings
 
-from lightfall_vibe.audio.capture import CaptureWorker
+import numpy as np
+import pytest
+
+from lightfall_vibe.audio.capture import (
+    CaptureWorker,
+    _silence_discontinuity_warnings,
+)
 from lightfall_vibe.audio.features import VibeFrame
 
 
@@ -57,3 +63,19 @@ def test_stop_before_start_is_noop(qtbot):
     worker = CaptureWorker(source_factory=lambda sr, bs: FakeRecorder())
     worker.stop()
     assert not worker.is_running
+
+
+def test_silence_discontinuity_warnings_filters_just_that_message(monkeypatch):
+    sc = pytest.importorskip("soundcard")
+    # Reset the install guard so the filter is (re)added for this test.
+    import lightfall_vibe.audio.capture as capture_mod
+
+    monkeypatch.setattr(capture_mod, "_warnings_silenced", False)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.resetwarnings()
+        _silence_discontinuity_warnings()
+        warnings.warn("data discontinuity in recording", sc.SoundcardRuntimeWarning)
+        warnings.warn("something else entirely", sc.SoundcardRuntimeWarning)
+    messages = [str(w.message) for w in caught]
+    assert "data discontinuity in recording" not in messages
+    assert "something else entirely" in messages
