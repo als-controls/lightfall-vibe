@@ -41,12 +41,14 @@ def test_panel_updates_bar_heights(qtbot):
     assert np.allclose(heights, 0.7)
 
 
-def test_beat_flash_sets_and_clears(qtbot):
+def test_beat_frames_do_not_change_background(qtbot):
+    """The beat background flash was removed (too much, per live feedback);
+    beats must render exactly like non-beat frames."""
     panel = VibePanel()
     qtbot.addWidget(panel)
+    before = panel._plot.backgroundBrush().color().name()
     panel._on_frame(_frame(beat=True))
-    assert panel._flash_timer.isActive()
-    qtbot.waitUntil(lambda: not panel._flash_timer.isActive(), timeout=1000)
+    assert panel._plot.backgroundBrush().color().name() == before
 
 
 def test_panel_survives_frames_without_conductor_running(qtbot):
@@ -54,4 +56,5 @@ def test_panel_survives_frames_without_conductor_running(qtbot):
     qtbot.addWidget(panel)
     for _ in range(3):
         panel._on_frame(_frame())
+    panel._on_frame(_frame(beat=True))
     # No assertion needed beyond "did not raise".

@@ -1,4 +1,4 @@
-"""Vibe spectrum panel: 24-band pyqtgraph bar analyzer with beat flash."""
+"""Vibe spectrum panel: 24-band pyqtgraph bar analyzer."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from typing import ClassVar
 
 import numpy as np
 from lightfall.visualization import pg
-from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
 
 from lightfall.plugins.panel_plugin import PanelPlugin
@@ -15,8 +14,6 @@ from lightfall.ui.theme.manager import ThemeManager
 
 from lightfall_vibe.audio.features import N_BANDS, VibeFrame
 from lightfall_vibe.conductor import get_conductor
-
-_FLASH_MS = 90
 
 
 def _gradient_brushes(start_hex: str, end_hex: str, n: int) -> list[QColor]:
@@ -74,11 +71,6 @@ class VibePanel(BasePanel):
         self._plot.addItem(self._bars)
         self._layout.addWidget(self._plot)
 
-        self._flash_timer = QTimer(self)
-        self._flash_timer.setSingleShot(True)
-        self._flash_timer.setInterval(_FLASH_MS)
-        self._flash_timer.timeout.connect(self._end_flash)
-
         self._brush_key = None
         self._apply_theme_colors()
         theme.colors_changed.connect(self._apply_theme_colors)
@@ -86,25 +78,16 @@ class VibePanel(BasePanel):
 
     def _apply_theme_colors(self) -> None:
         colors = ThemeManager.get_instance().colors
-        key = (colors.primary, colors.secondary, colors.background, colors.surface)
+        key = (colors.primary, colors.secondary, colors.background)
         if key == self._brush_key:
             return
         self._brush_key = key
         self._brushes = _gradient_brushes(colors.primary, colors.secondary, N_BANDS)
-        self._bg_normal = QColor(colors.background)
-        self._bg_flash = QColor(colors.surface)
         self._bars.setOpts(brushes=self._brushes, pen=None)
-        if not self._flash_timer.isActive():
-            self._plot.setBackground(self._bg_normal)
+        self._plot.setBackground(QColor(colors.background))
 
     def _on_frame(self, frame: VibeFrame) -> None:
         self._bars.setOpts(height=frame.bands)
-        if frame.beat:
-            self._plot.setBackground(self._bg_flash)
-            self._flash_timer.start()
-
-    def _end_flash(self) -> None:
-        self._plot.setBackground(self._bg_normal)
 
 
 class VibePanelPlugin(PanelPlugin):
