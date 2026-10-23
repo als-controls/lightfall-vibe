@@ -33,3 +33,8 @@ fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lightfall_vibe"]
+
+[tool.ruff.lint]
+# CI installs ruff unpinned, and ruff 0.16.0 grew its default rule set from
+# 59 to 413 rules. Keep the pre-0.16 defaults this code was written against.
+select = ["E4", "E7", "E9", "F"]
