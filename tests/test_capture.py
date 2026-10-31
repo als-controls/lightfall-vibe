@@ -66,7 +66,13 @@ def test_stop_before_start_is_noop(qtbot):
 
 
 def test_silence_discontinuity_warnings_filters_just_that_message(monkeypatch):
-    sc = pytest.importorskip("soundcard")
+    # importorskip only catches ImportError, but on Linux soundcard's import
+    # loads libpulse and connects to a PulseAudio server, raising OSError or
+    # RuntimeError on headless runners that have neither.
+    try:
+        import soundcard as sc
+    except Exception as exc:
+        pytest.skip(f"soundcard unavailable: {exc!r}")
     # Reset the install guard so the filter is (re)added for this test.
     import lightfall_vibe.audio.capture as capture_mod
 
