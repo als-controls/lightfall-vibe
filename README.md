@@ -26,7 +26,9 @@ Install into the same environment that runs Lightfall:
 
     pip install -e .
 
-Then in Lightfall: Preferences → Vibe → pick a device, hit Enable, play music.
+Then in Lightfall: Preferences → Vibe → set "Enable Vibe mode" to On (a per-user
+setting) and play music. The audio source is a This console setting: switch the
+scope to This console to pick it. Edits take effect at once; Cancel undoes them.
 
 ## Development
 
