@@ -58,3 +58,83 @@ def test_panel_survives_frames_without_conductor_running(qtbot):
         panel._on_frame(_frame())
     panel._on_frame(_frame(beat=True))
     # No assertion needed beyond "did not raise".
+
+
+# --- title-bar on/off toggle ---------------------------------------------------
+
+import pytest  # noqa: E402
+from PySide6.QtCore import QObject, Signal  # noqa: E402
+
+import lightfall_vibe.conductor as conductor_mod  # noqa: E402
+import lightfall_vibe.panel as panel_mod  # noqa: E402
+from lightfall_vibe.conductor import VibeConductor  # noqa: E402
+
+
+class _FakeCapture(QObject):
+    frame_ready = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, *_args):
+        super().__init__()
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+
+@pytest.fixture
+def conductor(monkeypatch):
+    c = VibeConductor(capture_factory=_FakeCapture, effect_factories={})
+    monkeypatch.setattr(conductor_mod, "_conductor", c)
+    return c
+
+
+@pytest.fixture
+def saved(monkeypatch):
+    out = []
+    monkeypatch.setattr(panel_mod, "_persist_enabled", out.append)
+    return out
+
+
+def test_title_bar_has_checkable_vibe_toggle(qtbot, conductor):
+    panel = VibePanel()
+    qtbot.addWidget(panel)
+    action = panel._toggle_action
+    assert action in panel._title_bar_actions
+    assert action.isCheckable()
+    assert not action.isChecked()
+    assert "on" in action.toolTip()
+
+
+def test_toggle_starts_and_stops_vibe_and_persists(qtbot, conductor, saved):
+    panel = VibePanel()
+    qtbot.addWidget(panel)
+    panel._toggle_action.trigger()
+    assert conductor.is_running
+    assert panel._toggle_action.isChecked()
+    assert "off" in panel._toggle_action.toolTip()
+    panel._toggle_action.trigger()
+    assert not conductor.is_running
+    assert not panel._toggle_action.isChecked()
+    assert saved == [True, False]
+
+
+def test_toggle_follows_starts_and_stops_made_elsewhere(qtbot, conductor, saved):
+    """Preferences or a capture failure change the conductor; the button follows."""
+    panel = VibePanel()
+    qtbot.addWidget(panel)
+    conductor.start()
+    assert panel._toggle_action.isChecked()
+    conductor._capture.failed.emit("device unplugged")
+    assert not conductor.is_running
+    assert not panel._toggle_action.isChecked()
+    assert saved == []  # only clicks write the setting
+
+
+def test_toggle_shows_running_state_when_panel_opens(qtbot, conductor):
+    conductor.start()
+    panel = VibePanel()
+    qtbot.addWidget(panel)
+    assert panel._toggle_action.isChecked()

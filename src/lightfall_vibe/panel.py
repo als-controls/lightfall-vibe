@@ -1,10 +1,17 @@
-"""Vibe spectrum panel: 24-band pyqtgraph bar analyzer."""
+"""Vibe spectrum panel: 24-band pyqtgraph bar analyzer.
+
+The title bar carries an on/off toggle for Vibe mode itself. It mirrors the
+conductor (checked while it runs, so a start from Preferences or a stop on
+capture failure shows up here) and a click saves ``vibe.enabled`` at User
+scope, the same setting as Preferences > Vibe > "Enable Vibe mode".
+"""
 
 from __future__ import annotations
 
 from typing import ClassVar
 
 import numpy as np
+from loguru import logger
 from lightfall.visualization import pg
 from PySide6.QtGui import QColor
 
@@ -14,6 +21,18 @@ from lightfall.ui.theme.manager import ThemeManager
 
 from lightfall_vibe.audio.features import N_BANDS, VibeFrame
 from lightfall_vibe.conductor import get_conductor
+
+_ICON_ON = "mdi6.music"
+_ICON_OFF = "mdi6.music-off"
+
+
+def _persist_enabled(on: bool) -> None:
+    """Save the toggle as ``vibe.enabled`` so the choice survives a restart."""
+    from lightfall.ui.preferences.manager import PreferencesManager
+
+    from lightfall_vibe.settings import PREF_ENABLED
+
+    PreferencesManager.get_instance().set(PREF_ENABLED, bool(on))
 
 
 def _gradient_brushes(start_hex: str, end_hex: str, n: int) -> list[QColor]:
@@ -41,7 +60,7 @@ class VibePanel(BasePanel):
         name="Vibe",
         description="Music spectrum analyzer driving Vibe mode",
         icon="music",  # bare name -> qtawesome fa5s.music in the sidebar
-        category="Dev",
+        category="Developer",
         keywords=["vibe", "music", "spectrum", "audio"],
         # The host's default layout only sweeps left/bottom/center areas;
         # a preloaded "right" panel registers but is never surfaced.
@@ -74,7 +93,47 @@ class VibePanel(BasePanel):
         self._brush_key = None
         self._apply_theme_colors()
         theme.colors_changed.connect(self._apply_theme_colors)
-        get_conductor().frame_ready.connect(self._on_frame)
+        conductor = get_conductor()
+        conductor.frame_ready.connect(self._on_frame)
+
+        self._toggle_action = self.add_title_bar_button(
+            _ICON_OFF,
+            "Turn Vibe mode on",
+            on_triggered=self._on_toggle,
+            checkable=True,
+        )
+        conductor.started.connect(self._sync_toggle)
+        conductor.stopped.connect(self._sync_toggle)
+        theme.colors_changed.connect(self._sync_toggle)  # re-tint the icon
+        self._sync_toggle()
+
+    def _on_toggle(self, checked: bool) -> None:
+        conductor = get_conductor()
+        if checked:
+            conductor.start()
+        else:
+            conductor.stop()
+        try:
+            _persist_enabled(conductor.is_running)
+        except Exception:  # noqa: BLE001 - never let a prefs hiccup break the toggle
+            logger.exception("Vibe: saving vibe.enabled failed")
+        self._sync_toggle()
+
+    def _sync_toggle(self, *_args) -> None:
+        """Show the conductor's real state (it may have been changed elsewhere)."""
+        action = self._toggle_action
+        running = get_conductor().is_running
+        action.setChecked(running)
+        tip = "Turn Vibe mode off" if running else "Turn Vibe mode on"
+        action.setToolTip(tip)
+        action.setText(tip)
+        try:
+            import qtawesome as qta
+
+            color = ThemeManager.get_instance().colors.text_secondary
+            action.setIcon(qta.icon(_ICON_ON if running else _ICON_OFF, color=color))
+        except Exception:  # noqa: BLE001 - keep the previous icon
+            pass
 
     def _apply_theme_colors(self) -> None:
         colors = ThemeManager.get_instance().colors
